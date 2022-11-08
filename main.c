@@ -1,30 +1,40 @@
 #include <stdint.h>
 #include "stm32f10x.h"
 
+/* Interrupt handler */
+void TIM2_IRQHandler(void) {
+	if (TIM2->SR & TIM_SR_CC1IF) { //Compare
+		GPIOC->BSRR = (1 << 13) << 16; //reset
+		TIM2->SR &= ~TIM_SR_CC1IF;
+	}
+	if (TIM2->SR & TIM_SR_UIF) { //Overflow
+		GPIOC->BSRR = (1 << 13); //set
+		/* Toggle GPIO here */
+		//GPIOC->ODR = ~(GPIOC->ODR & GPIO_ODR_ODR13) & GPIO_ODR_ODR13;
+ 		//Clear Interrupt flag
+		TIM2->SR &= ~TIM_SR_UIF;
+	}
+}
+
 int main(void)
 {
 	RCC->APB2ENR |= RCC_APB2ENR_IOPCEN;
 	GPIOC->CRH = GPIOC->CRH & ~(GPIO_CRH_CNF13 | GPIO_CRH_MODE13) | GPIO_CRH_MODE13_0; //PC13 = output
-	GPIOC->CRH = GPIOC->CRH & ~(GPIO_CRH_CNF14 | GPIO_CRH_MODE14) | GPIO_CRH_CNF14_1; //PC14 = Input
-	GPIOC->ODR |= GPIO_ODR_ODR14; // Enable PC14 Pull-up
-	uint32_t i;
-	uint8_t button_state = 0xFF;
-    
-    while(1)
-    {
-		if(!(GPIOC->IDR & GPIO_IDR_IDR14)){ // Button is pressed
-			button_state = ~button_state;
-			for(i=0; i<300000; i++){ __NOP(); }; // Debouncing
-			while(!(GPIOC->IDR & GPIO_IDR_IDR14)); // Wait the button to be released
-		}
 
-		if(button_state){
-			GPIOC->ODR &= ~GPIO_ODR_ODR13;
-			for(i=0; i<300000; i++){ __NOP(); };
+	/* Main code */
+   RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+   RCC->APB1RSTR |= RCC_APB1RSTR_TIM2RST;
+   RCC->APB1RSTR &= ~RCC_APB1RSTR_TIM2RST;
+   TIM2->PSC = 1;//1023;
+   TIM2->ARR = 4095;
+   TIM2->CCR1 = 1;//между 0 и ARR
+   TIM2->DIER |= TIM_DIER_UIE|TIM_DIER_CC1IE; // Enable Update Interrupt + Capture/compare
+   NVIC_ClearPendingIRQ(TIM2_IRQn);
+   NVIC_EnableIRQ(TIM2_IRQn); // Enable IRQ in NVIC
+   TIM2->CR1 |= TIM_CR1_CEN; // Start timer
+   while (1) {
+       __asm volatile ("nop");
+   }
 
-			GPIOC->ODR |= GPIO_ODR_ODR13;
-			for(i=0; i<300000; i++){ __NOP(); };
-		}
 
-    }
 }
