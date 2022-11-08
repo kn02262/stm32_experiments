@@ -1,40 +1,117 @@
 #include <stdint.h>
-#include "stm32f10x.h"
-
-/* Interrupt handler */
-void TIM2_IRQHandler(void) {
-	if (TIM2->SR & TIM_SR_CC1IF) { //Compare
-		GPIOC->BSRR = (1 << 13) << 16; //reset
-		TIM2->SR &= ~TIM_SR_CC1IF;
-	}
-	if (TIM2->SR & TIM_SR_UIF) { //Overflow
-		GPIOC->BSRR = (1 << 13); //set
-		/* Toggle GPIO here */
-		//GPIOC->ODR = ~(GPIOC->ODR & GPIO_ODR_ODR13) & GPIO_ODR_ODR13;
- 		//Clear Interrupt flag
-		TIM2->SR &= ~TIM_SR_UIF;
+#include <stm32f10x.h>
+void delay(uint32_t ticks) {
+	for (int i=0; i<ticks; i++) {
+		__NOP();
 	}
 }
 
-int main(void)
+void SPI1_Init(void)
 {
+  //Включаем тактирование SPI1 и GPIOA
+  RCC->APB2ENR |= RCC_APB2ENR_SPI1EN | RCC_APB2ENR_IOPAEN;
+  
+  /**********************************************************/
+  /*** Настройка выводов GPIOA на работу совместно с SPI1 ***/
+  /**********************************************************/
+  //PA7 - MOSI (=SI Slave In)
+  //PA6 - MISO (Free)
+  //PA5 - SCK (=SCL Clock)
+
+  // Also used with the display
+  //PA4 - CS (=CS Chip Select)
+  //PA3 - RS (also called A0, data=1 or command=0)
+  //PA2 - RSE (Reset=0, Standby=1)
+  
+  //Для начала сбрасываем все конфигурационные биты в нули
+  GPIOA->CRL &= ~(GPIO_CRL_CNF2 | GPIO_CRL_MODE2 
+                | GPIO_CRL_CNF3 | GPIO_CRL_MODE3
+                | GPIO_CRL_CNF4 | GPIO_CRL_MODE4
+				| GPIO_CRL_CNF5 | GPIO_CRL_MODE5 
+                | GPIO_CRL_CNF6 | GPIO_CRL_MODE6
+                | GPIO_CRL_CNF7 | GPIO_CRL_MODE7);
+
+  //Настраиваем
+  //SCK: MODE5 = 0x03 (11b); CNF5 = 0x02 (10b)
+  GPIOA->CRL |= GPIO_CRL_MODE5 | GPIO_CRL_CNF5_1;
+  
+  //MISO: MODE6 = 0x00 (00b); CNF6 = 0x01 (01b)
+  GPIOA->CRL |= GPIO_CRL_CNF6_0;
+  
+  //MOSI: MODE7 = 0x03 (11b); CNF7 = 0x02 (10b)
+  GPIOA->CRL |= GPIO_CRL_MODE7 | GPIO_CRL_CNF7_1;
+
+  //CS: MODE4 = 0x03 (11b); CNF4 = 0x00 (00b)
+  GPIOA->CRL |= GPIO_CRL_MODE4;
+
+  //RS: MODE3 = 0x03 (11b); CNF3 = 0x00 (00b)
+  GPIOA->CRL |= GPIO_CRL_MODE3;
+
+  //RESET: MODE2 = 0x03 (11b); CNF2 = 0x01 (01b) Open-drain
+  GPIOA->CRL |= GPIO_CRL_MODE2 | GPIO_CRL_CNF2_0;
+  //GPIOA->ODR |= GPIO_ODR_ODR2; // Set 'RESET' high (Standby mode)
+
+  /**********************/
+  /*** Настройка SPI1 ***/
+  /**********************/
+  
+  SPI1->CR1 &= ~SPI_CR1_DFF; // DFF=0 Размер кадра 8 бит
+  SPI1->CR1 &= ~SPI_CR1_LSBFIRST; // LSBFIRST=0 MSB First
+  SPI1->CR1 |= SPI_CR1_SSM; // Программное управление SS
+  SPI1->CR1 |= SPI_CR1_SSI; // SS в высоком состоянии
+  SPI1->CR1 &= ~SPI_CR1_BR; // Clear BR[2:0] bits
+  SPI1->CR1 |= SPI_CR1_BR_2; // BR[2:0]=100, Скорость передачи: F_PCLK/32
+  SPI1->CR1 |= SPI_CR1_MSTR; // Режим Master (ведущий)
+  SPI1->CR1 &= ~(SPI_CR1_CPOL | SPI_CR1_CPHA); //Режим работы SPI: 0
+  
+  SPI1->CR1 |= SPI_CR1_SPE; //Включаем SPI
+}
+
+void SPI1_Write(uint16_t data)
+{
+  //Ждем, пока не освободится буфер передатчика
+  while(!(SPI1->SR & SPI_SR_TXE));
+  
+  //заполняем буфер передатчика
+  SPI1->DR = data;
+}
+
+uint16_t SPI1_Read(void)
+{
+  SPI1->DR = 0; //запускаем обмен
+  
+  //Ждем, пока не появится новое значение 
+  //в буфере приемника
+  while(!(SPI1->SR & SPI_SR_RXNE));
+  
+  //возвращаем значение буфера приемника
+  return SPI1->DR;
+}
+
+int main(void) {
+	// Enable clock for GPIOC
 	RCC->APB2ENR |= RCC_APB2ENR_IOPCEN;
-	GPIOC->CRH = GPIOC->CRH & ~(GPIO_CRH_CNF13 | GPIO_CRH_MODE13) | GPIO_CRH_MODE13_0; //PC13 = output
+	// Enable PC13 push-pull mode
+	GPIOC->CRH &= ~GPIO_CRH_CNF13; //clear cnf bits
+	GPIOC->CRH |= GPIO_CRH_MODE13_0; //Max speed = 10Mhz
 
-	/* Main code */
-   RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-   RCC->APB1RSTR |= RCC_APB1RSTR_TIM2RST;
-   RCC->APB1RSTR &= ~RCC_APB1RSTR_TIM2RST;
-   TIM2->PSC = 1;//1023;
-   TIM2->ARR = 4095;
-   TIM2->CCR1 = 1;//между 0 и ARR
-   TIM2->DIER |= TIM_DIER_UIE|TIM_DIER_CC1IE; // Enable Update Interrupt + Capture/compare
-   NVIC_ClearPendingIRQ(TIM2_IRQn);
-   NVIC_EnableIRQ(TIM2_IRQn); // Enable IRQ in NVIC
-   TIM2->CR1 |= TIM_CR1_CEN; // Start timer
-   while (1) {
-       __asm volatile ("nop");
-   }
+	SPI1_Init();
+    GPIOA->ODR &= ~GPIO_ODR_ODR3; // A0=0 --a command is being sent
+    GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
+    SPI1_Write(0xA7);
+    GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
 
+    /*GPIOA->ODR |= GPIO_ODR_ODR3; // A0=1 --data is being sent
+    GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
+    SPI1_Write(0xFF);
+    GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
+    */
 
+    while (1) {
+        
+	    GPIOC->ODR |= (1U<<13U); //U -- unsigned suffix (to avoid syntax warnings in IDE)
+		delay(1000000);
+	    GPIOC->ODR &= ~(1U<<13U);
+	    delay(1000000);
+    }
 }
