@@ -95,7 +95,7 @@ void cmd(uint8_t data){
     GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
     delay(1000);
     SPI1_Write(data);
-    //delay(1000);
+    delay(500);
     GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
 }
 
@@ -104,8 +104,22 @@ void dat(uint8_t data){
     GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
     delay(1000);
     SPI1_Write(data);
-    //delay(1000);
+    delay(500); // Important!
     GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
+}
+
+void DrawChess(){
+  uint8_t i,j,k; // i=row number, j=col number, k=cycle inside a square
+  uint8_t val = 0x00; // Color 0x00=White strip, 0xFF=black strip
+  for(i=0; i<=7; i++){
+    cmd(0xB0 | i); // Set Page i (Pages 0x00...0x0F)
+    val = ~ val;
+    for(j=0; j<=15; j++){
+      for(k=0; k<=7; k++) dat(val);
+      val = ~val;
+    }
+    cmd(0xEE);
+  }
 }
 
 int main(void) {
@@ -117,35 +131,37 @@ int main(void) {
 	GPIOC->CRH |= GPIO_CRH_MODE13_0; //Max speed = 10Mhz
 
   SPI1_Init();
-    GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
-    GPIOA->ODR &= ~GPIO_ODR_ODR2; // RESET=0
-    delay(10000); // Wait for the power stabilized
-    GPIOA->ODR |= GPIO_ODR_ODR2; // RESET=1
-    delay(1000);
+  GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
+  GPIOA->ODR &= ~GPIO_ODR_ODR2; // RESET=0
+  delay(10000); // Wait for the power stabilized
+  GPIOA->ODR |= GPIO_ODR_ODR2; // RESET=1
+  delay(1000);
 
-    cmd(0xA2); //LCD Drive set 1/9 bias
-    cmd(0xA0); // RAM Address SEG Output normal
-    cmd(0xC8); // Common outout mode selection
-    cmd(0x28 | 0x07); // Power control mode
-    cmd(0x20 | 0x05); // Voltage regulator
-    cmd(0xA6); // Normal color, A7 = inverse color
-    cmd(0xAF); // Display on
-    
+  cmd(0xA2); //LCD Drive set 1/9 bias
+  cmd(0xA0); // RAM Address SEG Output normal
+  cmd(0xC8); // Common outout mode selection
+  cmd(0x28 | 0x07); // Power control mode
+  cmd(0x20 | 0x05); // Voltage regulator
+  cmd(0xA6); // Normal color, A7 = inverse color
+  cmd(0xAF); // Display on
+  cmd(0x40 | 0x00); // Set start line address (Lines 0x00...0x3F)
+  for(int k=0; k<=7; k++){ // Clear DRAM
+    cmd(0xB0 | k); // Set Page 0 (Pages 0x00...0x0F)
+    for(int i=0; i<=127; i++)
+      dat(0x00);
+    cmd(0xEE); // End writing to the page, return the page address back
+  }
 
-    cmd(0x40); // Go home
-    cmd(0xB0 | 0x00); // Set Page 0 (Pages 0x00...0x0F)
-    cmd(0x40 | 0x00); // Set start line address (Lines 0x00...0x3F)
+  // Setting the page address:
+  //cmd(0xB0 | 0x00); // Set Page 0 (Pages 0x00...0x0F)
+  //
+  // Setting the line address:
+  //cmd(0x10 | 0x00); // Set column address MSB (0x00...0x0F)
+  //cmd(0x00); // Set column address LSB (0x00...0x0F)
 
-    uint8_t val = 0;
-     for (int i=0; i<=16; i++){
-      for(int j=0; j<=8; j++) dat(val);
-      val = ~val;
-     }
-
-     
-    //while(1) dat(0x00);
-
-    while (1) {
+  DrawChess();
+  
+    while (1) { // LED blinking
 	    GPIOC->ODR |= (1U<<13U); //U -- unsigned suffix (to avoid syntax warnings in IDE)
 		delay(1000000);
 	    GPIOC->ODR &= ~(1U<<13U);
