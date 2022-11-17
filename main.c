@@ -1,10 +1,13 @@
-#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
 #include <stm32f10x.h>
 void delay(uint32_t ticks) {
 	for (int i=0; i<ticks; i++) {
 		__NOP();
 	}
 }
+
+uint8_t LCD_Buf[8][128];
 
 void SPI1_Init(void)
 {
@@ -93,19 +96,28 @@ uint8_t SPI1_Read(void)
 void cmd(uint8_t data){
     GPIOA->ODR &= ~GPIO_ODR_ODR3; // A0=0 --a command is being sent
     GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
-    delay(1000);
+    //delay(1000);
     SPI1_Write(data);
-    delay(500);
+    //delay(500);
+    while (SPI1->SR & SPI_SR_BSY);
     GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
 }
 
 void dat(uint8_t data){
     GPIOA->ODR |= GPIO_ODR_ODR3; // A0=1 --data is being sent
     GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
-    delay(1000);
+    //delay(1000);
     SPI1_Write(data);
-    delay(500); // Important!
+    while (SPI1->SR & SPI_SR_BSY); //delay(500); // Important!
     GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
+}
+
+void DrawPixel(uint8_t x, uint8_t y){ // x in [0..63], y in [0..127]
+  uint8_t page_address = (x >> 3) & 0b00000111; // %8 guarantees page_address in [0..7]
+  cmd(0xB0 | page_address); // Set Page page_address (Pages 0x00...0x0F)
+  cmd(y & 0b00001111); // Set column address LSB
+  cmd(0b00010000 | (y >> 4));
+  dat(1 << (x % 8));
 }
 
 void DrawChess(){
@@ -123,7 +135,6 @@ void DrawChess(){
 }
 
 int main(void) {
-  uint8_t test=0;
 	// Enable clock for GPIOC
 	RCC->APB2ENR |= RCC_APB2ENR_IOPCEN;
 	// Enable PC13 push-pull mode
@@ -141,14 +152,16 @@ int main(void) {
   cmd(0xA0); // RAM Address SEG Output normal
   cmd(0xC8); // Common outout mode selection
   cmd(0x28 | 0x07); // Power control mode
-  cmd(0x20 | 0x05); // Voltage regulator
+  cmd(0b00100000 | 0x05); // Voltage regulator
   cmd(0xA6); // Normal color, A7 = inverse color
   cmd(0xAF); // Display on
   cmd(0x40 | 0x00); // Set start line address (Lines 0x00...0x3F)
+  memset(LCD_Buf, 0, sizeof(int8_t) * 8 * 128);
   for(int k=0; k<=7; k++){ // Clear DRAM
     cmd(0xB0 | k); // Set Page 0 (Pages 0x00...0x0F)
-    for(int i=0; i<=127; i++)
-      dat(0x00);
+    for(int i=0; i<=127; i++){
+        dat(LCD_Buf[k][i]);
+    }
     cmd(0xEE); // End writing to the page, return the page address back
   }
 
@@ -159,7 +172,15 @@ int main(void) {
   //cmd(0x10 | 0x00); // Set column address MSB (0x00...0x0F)
   //cmd(0x00); // Set column address LSB (0x00...0x0F)
 
+  /*for(int i=0; i<64; i++)
+    for(int j=0; j<128; j++)
+      DrawPixel(i,j);
+  */
+
   DrawChess();
+  
+  //delay(10000000);
+  //cmd(0x40 | 0x01); // Set start line address (Lines 0x00...0x3F)
   
     while (1) { // LED blinking
 	    GPIOC->ODR |= (1U<<13U); //U -- unsigned suffix (to avoid syntax warnings in IDE)
