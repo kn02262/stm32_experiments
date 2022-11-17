@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stm32f10x.h>
+
 void delay(uint32_t ticks) {
 	for (int i=0; i<ticks; i++) {
 		__NOP();
@@ -96,7 +97,6 @@ uint8_t SPI1_Read(void)
 void cmd(uint8_t data){
     GPIOA->ODR &= ~GPIO_ODR_ODR3; // A0=0 --a command is being sent
     GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
-    //delay(1000);
     SPI1_Write(data);
     //delay(500);
     while (SPI1->SR & SPI_SR_BSY);
@@ -117,7 +117,11 @@ void DrawPixel(uint8_t x, uint8_t y){ // x in [0..63], y in [0..127]
   cmd(0xB0 | page_address); // Set Page page_address (Pages 0x00...0x0F)
   cmd(y & 0b00001111); // Set column address LSB
   cmd(0b00010000 | (y >> 4));
-  dat(1 << (x % 8));
+  uint8_t column = LCD_Buf[page_address][y];
+  //Set pixel value in LCD_buf
+  column |= (1 << (x % 8));
+  dat(column);
+  LCD_Buf[page_address][y] = column;
 }
 
 void DrawChess(){
@@ -172,12 +176,15 @@ int main(void) {
   //cmd(0x10 | 0x00); // Set column address MSB (0x00...0x0F)
   //cmd(0x00); // Set column address LSB (0x00...0x0F)
 
-  /*for(int i=0; i<64; i++)
+  for(int i=0; i<64; i++)
     for(int j=0; j<128; j++)
       DrawPixel(i,j);
-  */
 
-  DrawChess();
+  //DrawPixel(10, 10);
+  //DrawPixel(20, 20);
+  //DrawPixel(12, 10);
+
+  //DrawChess();
   
   //delay(10000000);
   //cmd(0x40 | 0x01); // Set start line address (Lines 0x00...0x3F)
