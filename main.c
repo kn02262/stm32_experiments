@@ -66,7 +66,15 @@ void SPI1_Init(void)
   SPI1->CR1 |= SPI_CR1_SSI; // SS в высоком состоянии
   //SPI1->CR1 &= ~SPI_CR1_BR; // Clear BR[2:0] bits
   //SPI1->CR1 |= SPI_CR1_BR_2; // BR[2:0]=100, Скорость передачи: F_PCLK/32
-  SPI1->CR1 |= SPI_CR1_BR;
+  // 50un SPI Clock
+  // 000 -> /2
+  // 001 -> /4
+  // 010 -> /8
+  // 011 -> /16
+  // 100 -> /32
+  // ...
+  // 111 -> /256
+  SPI1->CR1 |= SPI_CR1_BR_1;
   SPI1->CR1 |= SPI_CR1_MSTR; // Режим Master (ведущий)
   SPI1->CR1 &= ~(SPI_CR1_CPOL | SPI_CR1_CPHA); //Режим работы SPI: CPOL=0 CPHA=0
   
