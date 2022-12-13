@@ -55,6 +55,7 @@ set(SOURCE_FILES
     syscalls/syscalls.c
     lib/utils.c
     lib/spi.c
+    lib/seglcd.c
     main.c)
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/.gdbinit DESTINATION ${EXECUTABLE_OUTPUT_PATH})
